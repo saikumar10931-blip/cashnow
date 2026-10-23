@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CashNow · Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{color-scheme:dark;--bg:#0b1016;--panel:#151f2a;--line:#27384b;--text:#e7eef6;--muted:#8b9db0;--a:#1ed6a4;--b:#22b8e0;--red:#ff6875}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 450px at 80% -10%,#10303a,transparent 60%),var(--bg);color:var(--text);font:15px Inter,system-ui,Segoe UI,sans-serif}
+main{max-width:1150px;margin:auto;padding:28px 18px 70px}.brand{font-weight:900;font-size:25px;margin-bottom:22px}.brand span{color:var(--a)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;margin:14px 0}
+h1{font-size:28px;margin:0 0 6px}h2{font-size:18px;margin:0 0 14px}.muted,.note{color:var(--muted);font-size:13px;line-height:1.5}
+label{display:block;color:var(--muted);font-size:12px;margin:12px 0 6px;text-transform:uppercase;letter-spacing:.05em}
+input,select,button{font:inherit;border-radius:10px;padding:11px 13px;border:1px solid var(--line);background:#0e1720;color:var(--text)}input,select{width:100%}button{cursor:pointer;font-weight:750}button.primary{background:linear-gradient(135deg,var(--a),var(--b));border:0;color:#03231b}button.danger{border-color:#8b3945;color:#ffdce0}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.hidden{display:none!important}
+.status{padding:11px 13px;border-radius:10px;background:#0e1720;border:1px solid var(--line);margin-top:12px;white-space:pre-wrap}.status.error{border-color:#8b3945;color:#ffdce0}.status.ok{border-color:#26795d;color:#baffdf}
+.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;padding:12px 9px;border-bottom:1px solid var(--line);font-size:13px}th{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.05em}
+.badge{display:inline-block;padding:4px 8px;border:1px solid var(--line);border-radius:99px;font-size:11px;color:var(--a)}
+@media(max-width:600px){.row{grid-template-columns:1fr}.panel{padding:16px}h1{font-size:23px}}
+</style>
+</head>
+<body><main>
+<div class="brand">CASH<span>NOW</span> <small class="muted">/ ADMIN</small> <a href="index.html" style="float:right;color:var(--a);font-size:14px;font-weight:600;text-decoration:none">← Main website</a></div>
+<section id="setup" class="panel">
+<h1>Connect Admin Dashboard</h1>
+<p class="muted">Enter your Supabase project URL and publishable key. These are public client settings; never enter a service-role or secret key here.</p>
+<div class="row">
+<div><label>Supabase project URL</label><input id="url" placeholder="https://your-project.supabase.co" autocomplete="url"></div>
+<div><label>Supabase publishable key</label><input id="key" placeholder="sb_publishable_..." autocomplete="off"></div>
+</div>
+<div class="actions"><button class="primary" id="connect">Connect</button></div>
+<p class="note">This page stores the URL/key in this browser's local storage. To keep them out of the HTML source, don't hard-code them into the file.</p>
+</section>
+<section id="login" class="panel hidden">
+<h2>Administrator sign in</h2><p class="muted">Sign in with the email/password of the Supabase user whose UID is registered in public.admin_users.</p>
+<label>Email</label><input id="email" type="email" autocomplete="username">
+<label>Password</label><input id="password" type="password" autocomplete="current-password">
+<div class="actions"><button class="primary" id="signin">Sign in</button></div>
+<div id="loginMsg" class="status hidden"></div>
+</section>
+<section id="app" class="hidden">
+<div class="panel">
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1"><h1>Admin dashboard</h1><p id="who" class="muted"></p></div><button id="refresh">Refresh users</button><button id="signout" class="danger">Sign out</button></div>
+<div id="appMsg" class="status hidden"></div>
+</div>
+<div class="panel">
+<h2>Find a user</h2><label>Search email, username, or user ID</label><input id="search" placeholder="Start typing to filter users...">
+<p class="note">Select a user from the table below to prepare an adjustment. Amounts are in your site's wallet units.</p>
+</div>
+<div class="panel">
+<h2>Adjust selected user's wallet</h2>
+<div class="row">
+<div><label>Selected user</label><input id="selected" readonly placeholder="Choose a user from the table"></div>
+<div><label>Amount</label><input id="amount" type="number" min="0.01" max="1000000" step="0.01" placeholder="e.g. 100.00"></div>
+</div>
+<label>Reason / audit note</label><input id="reason" maxlength="500" placeholder="Required: explain the adjustment">
+<div class="actions"><button class="primary" id="add">Add funds</button><button class="danger" id="deduct">Deduct funds</button></div>
+<p class="note">Each adjustment is validated by a database function that checks your authenticated admin UID. Never credit a deposit based only on a screenshot or client-side payment result.</p>
+</div>
+<div class="panel"><h2>Registered users <span id="count" class="badge">0</span></h2><div class="tablewrap"><table><thead><tr><th>Email</th><th>Username</th><th>Balance</th><th>Created</th><th>Action</th></tr></thead><tbody id="users"><tr><td colspan="5" class="muted">Connect and sign in to load users.</td></tr></tbody></table></div></div>
+<div class="panel"><h2>Recent transaction log</h2><p class="muted">This view lists the latest adjustments in this session's fetched user data only. A dedicated audit-history RPC can be added if needed.</p><div class="tablewrap"><table><thead><tr><th>User ID</th><th>Type</th><th>Amount</th><th>Note</th><th>Created</th></tr></thead><tbody id="tx"><tr><td colspan="5" class="muted">No adjustments loaded yet.</td></tr></tbody></table></div></div>
+</section>
+</main>
+<script>
+(() => {
+ const $ = id => document.getElementById(id);
+ let supabase = null, currentUser = null, allUsers = [], recentTx = [];
+ const cfg = (() => { try { return JSON.parse(localStorage.getItem('cashnow_admin_config') || 'null'); } catch { return null; } })();
+ if (cfg) { $('url').value = cfg.url || ''; $('key').value = cfg.key || ''; }
+ function msg(id, text, kind='') { const el=$(id); el.textContent=text; el.className='status'+(kind?' '+kind:''); el.classList.remove('hidden'); }
+ function hide(id){$(id).classList.add('hidden')}
+ function validUrl(u){try{const x=new URL(u);return x.protocol==='https:'&&x.hostname.endsWith('.supabase.co')}catch{return false}}
+ async function connect() {
+   const url=$('url').value.trim().replace(/\/+$/,''), key=$('key').value.trim();
+   if(!validUrl(url)||!key.startsWith('sb_publishable_')) { alert('Enter a valid Supabase project URL and sb_publishable_ key.'); return; }
+   localStorage.setItem('cashnow_admin_config', JSON.stringify({url,key}));
+   supabase = window.supabase.createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+   $('setup').classList.add('hidden'); $('login').classList.remove('hidden');
+   try { const {data:{session}}=await supabase.auth.getSession(); if(session) await enterApp(session.user); } catch(e) { msg('loginMsg',e.message,'error'); }
+ }
+ async function enterApp(user) {
+   currentUser=user; $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+   $('who').textContent='Signed in as '+(user.email||user.id)+' · UID '+user.id;
+   await loadUsers();
+ }
+ async function signIn() {
+   hide('loginMsg');
+   const {data,error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+   if(error){msg('loginMsg',error.message,'error');return;}
+   await enterApp(data.user);
+ }
+ async function loadUsers() {
+   msg('appMsg','Loading users…');
+   const {data,error}=await supabase.rpc('admin_list_users');
+   if(error){msg('appMsg','Could not load users: '+error.message+'\\nConfirm that the admin SQL was run and this UID is in public.admin_users.','error');return;}
+   allUsers=data||[]; renderUsers(); msg('appMsg','Loaded '+allUsers.length+' users.','ok');
+ }
+ function renderUsers() {
+   const q=$('search').value.trim().toLowerCase();
+   const rows=allUsers.filter(u=>[u.email,u.username,u.user_id].some(v=>(v||'').toLowerCase().includes(q)));
+   $('count').textContent=rows.length;
+   $('users').innerHTML=rows.length?rows.map(u=>`<tr><td>${esc(u.email||'')}</td><td>${esc(u.username||'')}</td><td>${money(u.balance)}</td><td>${esc(u.created_at?new Date(u.created_at).toLocaleString():'')}</td><td><button data-id="${esc(u.user_id)}">Select</button></td></tr>`).join(''):'<tr><td colspan="5" class="muted">No matching users.</td></tr>';
+   $('users').querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>{const u=allUsers.find(x=>x.user_id===b.dataset.id);$('selected').value=u.user_id;msg('appMsg','Selected '+(u.email||u.user_id)+' · current balance '+money(u.balance),'ok')}));
+ }
+ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+ function money(v){return Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
+ async function adjust(action) {
+   hide('appMsg');
+   const userId=$('selected').value, amount=Number($('amount').value), reason=$('reason').value.trim();
+   if(!userId){msg('appMsg','Select a user first.','error');return;}
+   if(!Number.isFinite(amount)||amount<=0||amount>1000000||Math.round(amount*100)!==amount*100){msg('appMsg','Enter an amount greater than 0, with at most two decimal places.','error');return;}
+   if(!reason){msg('appMsg','Enter a reason for the audit log.','error');return;}
+   const button=$(action==='add'?'add':'deduct'); button.disabled=true;
+   try {
+     const {data,error}=await supabase.rpc('admin_adjust_funds',{p_user_id:userId,p_amount:amount,p_action:action,p_description:reason});
+     if(error) throw error;
+     recentTx.unshift({user_id:userId,transaction_type:'admin-'+action,amount,description:reason,created_at:new Date().toISOString()});
+     renderTx(); msg('appMsg','Adjustment successful. New balance: '+money(data),'ok'); $('amount').value=''; await loadUsers();
+   } catch(e) {msg('appMsg','Adjustment failed: '+e.message,'error');}
+   finally {button.disabled=false;}
+ }
+ function renderTx(){ $('tx').innerHTML=recentTx.length?recentTx.slice(0,30).map(t=>`<tr><td>${esc(t.user_id)}</td><td>${esc(t.transaction_type)}</td><td>${money(t.amount)}</td><td>${esc(t.description)}</td><td>${new Date(t.created_at).toLocaleString()}</td></tr>`).join(''):'<tr><td colspan="5" class="muted">No adjustments made in this session.</td></tr>'; }
+ $('connect').addEventListener('click',connect); $('signin').addEventListener('click',signIn);
+ $('password').addEventListener('keydown',e=>{if(e.key==='Enter')signIn()});
+ $('search').addEventListener('input',renderUsers); $('refresh').addEventListener('click',loadUsers);
+ $('add').addEventListener('click',()=>adjust('add')); $('deduct').addEventListener('click',()=>adjust('deduct'));
+ $('signout').addEventListener('click',async()=>{await supabase.auth.signOut();currentUser=null;allUsers=[];$('app').classList.add('hidden');$('login').classList.remove('hidden')});
+ const originalConnect=connect;
+ if(cfg && cfg.url && cfg.key && validUrl(cfg.url)) { try { supabase=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}); $('setup').classList.add('hidden'); $('login').classList.remove('hidden'); supabase.auth.getSession().then(({data})=>{if(data.session)enterApp(data.session.user)}); } catch {} }
+})();
+</script></body></html>
